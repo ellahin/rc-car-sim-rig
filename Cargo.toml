@@ -1,0 +1,7 @@
+[workspace]
+
+members = [
+  "common_data"
+, "rc_car"]
+
+resolver = "2"
