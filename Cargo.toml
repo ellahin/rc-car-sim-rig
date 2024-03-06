@@ -2,6 +2,6 @@
 
 members = [
   "common_data"
-, "rc_car"]
+, "rc_car", "server"]
 
 resolver = "2"

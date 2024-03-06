@@ -34,7 +34,7 @@ impl Http {
         };
     }
 
-    async fn auth_start(&self, email: String) -> Result<String, HttpErrors> {
+    async fn auth_start(&mut self, email: String) -> Result<(), HttpErrors> {
         let client = reqwest::Client::new();
 
         let auth_json_object = AuthStartJson {
@@ -61,7 +61,9 @@ impl Http {
 
         let token = token_raw.unwrap();
 
-        return Ok(token);
+        self.auth_token = Some(token.clone());
+
+        return Ok(());
     }
 
     async fn auth_verify(&mut self, auth_token: String) -> Result<String, HttpErrors> {
