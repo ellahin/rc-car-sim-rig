@@ -1,12 +1,10 @@
+use std::time::SystemTime;
+
 use common_data::server::data::telementry::Telementry;
 
-pub enum UDPSessionState {
-    UnAuthed,
-    Authed,
-}
 pub struct UDPSession {
-    stream: Vec<u8>,
-    username: Option<String>,
-    telementry: Option<Telementry>,
-    state: UDPSessionState,
+    pub stream: Vec<u8>,
+    pub username: Option<String>,
+    pub telementry: Option<Telementry>,
+    pub last_changed: SystemTime,
 }
