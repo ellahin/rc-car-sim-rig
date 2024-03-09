@@ -3,9 +3,16 @@ mod repo;
 
 use tokio::{net::UdpSocket, sync::mpsc};
 
+use dotenvy::dotenv;
+
+use sqlx::migrate::{MigrateDatabase, Migrator};
+use sqlx::Sqlite;
+use sqlx::{Pool, SqlitePool};
+
 use std::collections::HashMap;
-use std::io::{self, Read};
+use std::env;
 use std::net::SocketAddr;
+use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime};
 
@@ -36,6 +43,53 @@ async fn main() {
         }
     });
 
+    let mut userauth_raw: HashMap<String, crate::data::userauthstruct::UserAuth> = HashMap::new();
+    let mut userauth = Arc::new(Mutex::new(userauth_raw));
+
+    let mut userauth_cleanup = Arc::clone(&userauth);
+    tokio::spawn(async move {
+        loop {
+            let now = SystemTime::now();
+            let offset = now - Duration::from_secs(900);
+            let mut userauth_lock = userauth_cleanup.lock().unwrap();
+            let mut to_delete: Vec<String> = Vec::new();
+
+            for (id, user) in userauth_lock.iter().clone() {
+                if user.created <= offset {
+                    to_delete.push(id.clone());
+                }
+            }
+
+            for delete in to_delete.iter() {
+                let _ = userauth_lock.remove(delete);
+            }
+            let _ = tokio::time::sleep(Duration::from_secs(30));
+        }
+    });
+
+    dotenv().expect(".env file not found");
+
+    if env::var("DATABASE_URL").is_err() {
+        panic!("DATABASE_URL not in environment vars");
+    }
+
+    let database_url = env::var("DATABASE_URL").unwrap();
+
+    if !sqlx::Sqlite::database_exists(&database_url).await.unwrap() {
+        sqlx::Sqlite::create_database(&database_url).await.unwrap();
+    }
+
+    let migration_path = Path::new("./migrations");
+
+    let sql_pool = SqlitePool::connect(&database_url).await.unwrap();
+
+    Migrator::new(migration_path)
+        .await
+        .unwrap()
+        .run(&sql_pool)
+        .await
+        .unwrap();
+
     // Setting up udp socket handler
     let socket = UdpSocket::bind("0.0.0.0:8080".parse::<SocketAddr>().unwrap())
         .await
@@ -55,6 +109,8 @@ async fn main() {
     });
 
     tokio::spawn(async move {
+        let udp_tx_clone = udp_tx.clone();
+
         loop {
             let mut buff = [0; 4096];
 

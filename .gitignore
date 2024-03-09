@@ -1,1 +1,3 @@
 /target
+/server/.env
+/server/rc_server.db
