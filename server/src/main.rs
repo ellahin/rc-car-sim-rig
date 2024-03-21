@@ -110,7 +110,7 @@ async fn main() {
         }
     });
 
-    let udp_tx_clone = udp_tx.clone();
+    let udp_tx_udp_rx = udp_tx.clone();
 
     tokio::spawn(async move {
         loop {
@@ -124,9 +124,16 @@ async fn main() {
                 continue;
             }
 
-            let (len, addr) = incomming.unwrap();
+            let udp_tx_clone = udp_tx_udp_rx.clone();
 
-            println!("reccived {:?} bytes from {:?}", len, addr);
+            tokio::spawn(async move {
+                let (len, addr) = incomming.unwrap();
+
+                crate::repo::handlers::udphandler::handle_udp(buff, addr, udp_tx_clone.clone())
+                    .await;
+
+                println!("reccived {:?} bytes from {:?}", len, addr);
+            });
         }
     });
 
