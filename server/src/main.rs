@@ -149,7 +149,7 @@ async fn main() {
     let _ = HttpServer::new(move || {
         App::new()
             .app_data(web_data.clone())
-            .service(crate::repo::http::index::hello)
+            .service(crate::repo::http::index::get)
     })
     .disable_signals()
     .bind(("127.0.0.1", 8080))
