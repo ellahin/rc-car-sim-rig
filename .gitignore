@@ -1,3 +1,5 @@
 /target
 /server/.env
 /server/rc_server.db
+/server/rc_server.db-shm
+/server/rc_server.db-wal

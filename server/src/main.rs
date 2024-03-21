@@ -6,8 +6,10 @@ use tokio::{net::UdpSocket, sync::mpsc};
 use dotenvy::dotenv;
 
 use sqlx::migrate::{MigrateDatabase, Migrator};
-use sqlx::Sqlite;
-use sqlx::{Pool, SqlitePool};
+use sqlx::SqlitePool;
+
+use actix_web::App;
+use actix_web::HttpServer;
 
 use std::collections::HashMap;
 use std::env;
@@ -108,9 +110,9 @@ async fn main() {
         }
     });
 
-    tokio::spawn(async move {
-        let udp_tx_clone = udp_tx.clone();
+    let udp_tx_clone = udp_tx.clone();
 
+    tokio::spawn(async move {
         loop {
             let mut buff = [0; 4096];
 
@@ -127,4 +129,31 @@ async fn main() {
             println!("reccived {:?} bytes from {:?}", len, addr);
         }
     });
+
+    // Http server
+    let http_sql = sql_pool.clone();
+
+    let http_cars = cars.clone();
+    let http_userauth = userauth.clone();
+    let http_udp_tx = udp_tx.clone();
+
+    let http_state = crate::data::httpstate::HttpState {
+        sqlx: http_sql,
+        cars: http_cars,
+        user_auth: http_userauth,
+        udp_tx: http_udp_tx,
+    };
+
+    let web_data = actix_web::web::Data::new(http_state);
+
+    let _ = HttpServer::new(move || {
+        App::new()
+            .app_data(web_data.clone())
+            .service(crate::repo::http::index::hello)
+    })
+    .disable_signals()
+    .bind(("127.0.0.1", 8080))
+    .expect("cannot bind to port")
+    .run()
+    .await;
 }
