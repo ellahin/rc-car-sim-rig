@@ -11,6 +11,8 @@ use sqlx::SqlitePool;
 use actix_web::App;
 use actix_web::HttpServer;
 
+use lettre::{SmtpTransport, Transport};
+
 use std::collections::HashMap;
 use std::env;
 use std::net::SocketAddr;
@@ -74,6 +76,16 @@ async fn main() {
     if env::var("DATABASE_URL").is_err() {
         panic!("DATABASE_URL not in environment vars");
     }
+
+    if env::var("JWT_SECRETN").is_err() {
+        panic!("JWT_SECRETN not in environment vars");
+    }
+
+    if env::var("FROM_ADDRESS").is_err() {
+        panic!("No FROM_ADDRESS in environment vars")
+    }
+
+    let jwt_secret = env::var("JWT_SECRETN").unwrap();
 
     let database_url = env::var("DATABASE_URL").unwrap();
 
@@ -143,12 +155,30 @@ async fn main() {
     let http_cars = cars.clone();
     let http_userauth = userauth.clone();
     let http_udp_tx = udp_tx.clone();
+    let mut smtp_address = "127.0.0.1".to_string();
+
+    if env::var("SMTP_ADDRESS").is_err() {
+        println!("No SMTP_ADDRESS in environment variables, reverting to using 127.0.0.1");
+    } else {
+        smtp_address = env::var("SMTP_ADDRESS").unwrap();
+    }
+
+    let smtp_transport_raw = SmtpTransport::relay(&smtp_address);
+
+    if smtp_transport_raw.is_err() {
+        panic!("Cannot connect to SMTP relay");
+    }
+
+    let from_address = env::var("FROM_ADDRESS").unwrap();
 
     let http_state = crate::data::httpstate::HttpState {
         sqlx: http_sql,
         cars: http_cars,
         user_auth: http_userauth,
         udp_tx: http_udp_tx,
+        jwt_secret: jwt_secret,
+        smtp_transport: smtp_transport_raw.unwrap().build(),
+        from_address: from_address,
     };
 
     let web_data = actix_web::web::Data::new(http_state);
@@ -157,6 +187,7 @@ async fn main() {
         App::new()
             .app_data(web_data.clone())
             .service(crate::repo::http::index::get)
+            .service(crate::repo::http::auth::email::put)
     })
     .disable_signals()
     .bind(("127.0.0.1", 8080))

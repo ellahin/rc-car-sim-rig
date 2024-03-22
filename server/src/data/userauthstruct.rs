@@ -1,6 +1,6 @@
 use std::time::SystemTime;
 
 pub struct UserAuth {
-    pub code: [char; 8],
+    pub code: String,
     pub created: SystemTime,
 }

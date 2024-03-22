@@ -1,10 +1,13 @@
 use crate::server::json::http::{AuthStartJson, AuthVerifyJson};
+use std::str::FromStr;
 use std::time::SystemTime;
 
 use serde_json;
 
 use reqwest;
 use reqwest::Error;
+
+use email_address::*;
 
 pub struct Http {
     server_address: String,
@@ -14,7 +17,7 @@ pub struct Http {
 
 pub struct AuthScope {
     valid_to: SystemTime,
-    email: String,
+    email: EmailAddress,
 }
 
 pub enum HttpErrors {
@@ -43,7 +46,7 @@ impl Http {
 
         let auth_json = serde_json::to_string(&auth_json_object).unwrap();
 
-        let request_url = self.server_address.clone() + "/authstart";
+        let request_url = self.server_address.clone() + "/auth/email";
 
         let reqwest_raw = client.post(request_url).body(auth_json).send().await;
 
@@ -75,7 +78,7 @@ impl Http {
 
         let auth_token = serde_json::to_string(&auth_json_object).unwrap();
 
-        let request_url = self.server_address.clone() + "/authverify";
+        let request_url = self.server_address.clone() + "/auth/email/verify";
 
         let reqwest_raw = client.post(request_url).body(auth_token).send().await;
 
