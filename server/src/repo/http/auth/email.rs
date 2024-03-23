@@ -190,7 +190,5 @@ pub async fn verify(state: Data<HttpState>, data: Json<AuthVerifyJson>) -> impl 
         .await;
     }
 
-    return HttpResponse::Ok()
-        .insert_header(("Authorization", jwt.unwrap()))
-        .body("OK");
+    return HttpResponse::Ok().body(jwt.unwrap());
 }
