@@ -6,8 +6,8 @@ use chrono::prelude::*;
 use chrono::Duration;
 
 pub struct AuthState {
-    claims: AuthJwt,
-    refresh_token: Option<String>,
+    pub claims: AuthJwt,
+    pub refresh_token: Option<String>,
 }
 
 fn verify(token: String, secret: String) -> Result<AuthJwt, ()> {

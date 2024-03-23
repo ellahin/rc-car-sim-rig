@@ -10,3 +10,20 @@ pub struct AuthVerifyJson {
     pub auth_code: String,
     pub jwt: String,
 }
+
+#[derive(Serialize, Deserialize, Debug)]
+pub enum CarState {
+    Offline,
+    Online,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Car {
+    pub uuid: String,
+    pub status: CarState,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct GetCars {
+    pub cars: Vec<Car>,
+}
