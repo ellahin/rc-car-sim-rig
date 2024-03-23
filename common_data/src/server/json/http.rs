@@ -8,4 +8,5 @@ pub struct AuthStartJson {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct AuthVerifyJson {
     pub auth_code: String,
+    pub jwt: String,
 }

@@ -1,7 +1,7 @@
 use crate::data::httpstate::HttpState;
 use crate::data::userauthstruct::UserAuth;
-use common_data::server::data::jwt_claims::EmailAuthStartJwt;
-use common_data::server::json::http::AuthStartJson;
+use common_data::server::data::jwt_claims::{AuthJwt, EmailAuthStartJwt};
+use common_data::server::json::http::{AuthStartJson, AuthVerifyJson};
 
 use actix_web::put;
 use actix_web::web::Data;
@@ -9,7 +9,7 @@ use actix_web::web::Json;
 use actix_web::HttpResponse;
 use actix_web::Responder;
 
-use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
+use jsonwebtoken::{decode, encode, Algorithm, DecodingKey, EncodingKey, Header, Validation};
 
 use email_address::*;
 
@@ -17,7 +17,6 @@ use rand::Rng;
 
 use lettre::message::header::ContentType;
 use lettre::Message;
-use lettre::SmtpTransport;
 use lettre::Transport;
 
 use chrono::prelude::*;
@@ -102,4 +101,96 @@ async fn put(state: Data<HttpState>, data: Json<AuthStartJson>) -> impl Responde
     }
 
     return HttpResponse::Ok().body(jwt.unwrap());
+}
+
+#[put("/auth/email/verify")]
+pub async fn verify(state: Data<HttpState>, data: Json<AuthVerifyJson>) -> impl Responder {
+    let mut validation = Validation::new(Algorithm::RS256);
+
+    let token_raw = decode::<EmailAuthStartJwt>(
+        &data.jwt,
+        &DecodingKey::from_secret(state.jwt_secret.clone().as_bytes()),
+        &validation,
+    );
+
+    if token_raw.is_err() {
+        return HttpResponse::Forbidden().body("Bad Auth Token");
+    }
+
+    let token = token_raw.unwrap().claims;
+
+    let mut authstate = state.user_auth.lock().unwrap();
+
+    let auth_raw = authstate.get(&token.email.clone());
+
+    if auth_raw.is_none() {
+        return HttpResponse::Forbidden().body("Email Auth doesn't exist");
+    }
+
+    let auth = auth_raw.unwrap();
+
+    if auth.code != data.auth_code {
+        return HttpResponse::Forbidden().body("Code Does not match");
+    }
+
+    authstate.remove(&token.email.clone());
+
+    drop(authstate);
+
+    let current_time = Utc::now();
+    // Offsetting by 1 hour
+    let offset_time = current_time.clone() + Duration::seconds(3600);
+
+    let jwt_claims: AuthJwt = AuthJwt {
+        email: token.email.clone(),
+        signin_date: current_time.timestamp(),
+        iat: current_time.timestamp(),
+        exp: offset_time.timestamp(),
+    };
+
+    let jwt_header = Header::new(Algorithm::RS256);
+
+    let jwt = encode(
+        &jwt_header,
+        &jwt_claims,
+        &EncodingKey::from_secret(state.jwt_secret.clone().as_bytes()),
+    );
+
+    if jwt.is_err() {
+        println!("Cannot encode JWT Toket: {}", jwt.unwrap_err());
+        return HttpResponse::InternalServerError().body("Server Error");
+    }
+
+    let get_user_raw = sqlx::query!(
+        "SELECT username from users where username = ?1",
+        token.email
+    )
+    .fetch_optional(&state.sqlx)
+    .await;
+
+    if get_user_raw.is_err() {
+        return HttpResponse::InternalServerError().body("Server Error");
+    }
+
+    let get_user = get_user_raw.unwrap();
+
+    if get_user.is_none() {
+        let _ = sqlx::query!(
+            "INSERT INTO users(username, lastsignin) VALUES(?1, datetime('now'))",
+            token.email
+        )
+        .execute(&state.sqlx)
+        .await;
+    } else {
+        let _ = sqlx::query!(
+            "update users set lastsignin = datetime('now') where username = ?1",
+            token.email
+        )
+        .execute(&state.sqlx)
+        .await;
+    }
+
+    return HttpResponse::Ok()
+        .insert_header(("Authorization", jwt.unwrap()))
+        .body("OK");
 }

@@ -73,19 +73,19 @@ async fn main() {
 
     dotenv().expect(".env file not found");
 
-    if env::var("DATABASE_URL").is_err() {
-        panic!("DATABASE_URL not in environment vars");
-    }
-
     if env::var("JWT_SECRETN").is_err() {
         panic!("JWT_SECRETN not in environment vars");
     }
+
+    let jwt_secret = env::var("JWT_SECRETN").unwrap();
 
     if env::var("FROM_ADDRESS").is_err() {
         panic!("No FROM_ADDRESS in environment vars")
     }
 
-    let jwt_secret = env::var("JWT_SECRETN").unwrap();
+    if env::var("DATABASE_URL").is_err() {
+        panic!("DATABASE_URL not in environment vars");
+    }
 
     let database_url = env::var("DATABASE_URL").unwrap();
 
@@ -188,6 +188,7 @@ async fn main() {
             .app_data(web_data.clone())
             .service(crate::repo::http::index::get)
             .service(crate::repo::http::auth::email::put)
+            .service(crate::repo::http::auth::email::verify)
     })
     .disable_signals()
     .bind(("127.0.0.1", 8080))

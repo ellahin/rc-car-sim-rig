@@ -70,10 +70,15 @@ impl Http {
     }
 
     async fn auth_verify(&mut self, auth_token: String) -> Result<String, HttpErrors> {
+        if self.auth_token.is_none() {
+            return Err(HttpErrors::Unauthorized);
+        }
+
         let client = reqwest::Client::new();
 
         let auth_json_object = AuthVerifyJson {
             auth_code: auth_token,
+            jwt: self.auth_token.clone().unwrap(),
         };
 
         let auth_token = serde_json::to_string(&auth_json_object).unwrap();

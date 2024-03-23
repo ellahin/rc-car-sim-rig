@@ -6,3 +6,11 @@ pub struct EmailAuthStartJwt {
     pub iat: i64,
     pub exp: i64,
 }
+
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+pub struct AuthJwt {
+    pub email: String,
+    pub signin_date: i64,
+    pub iat: i64,
+    pub exp: i64,
+}
