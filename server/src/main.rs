@@ -21,7 +21,7 @@ use std::time::{Duration, SystemTime};
 #[tokio::main]
 async fn main() {
     // Setting up global states
-    let mut cars_raw: HashMap<String, data::udpstruct::UDPSession> = HashMap::new();
+    let mut cars_raw: HashMap<String, data::state::CarConnection> = HashMap::new();
     let mut cars = Arc::new(Mutex::new(cars_raw));
 
     let mut cars_cleanup = Arc::clone(&cars);
@@ -45,7 +45,7 @@ async fn main() {
         }
     });
 
-    let mut userauth_raw: HashMap<String, crate::data::userauthstruct::UserAuth> = HashMap::new();
+    let mut userauth_raw: HashMap<String, crate::data::state::UserAuth> = HashMap::new();
     let mut userauth = Arc::new(Mutex::new(userauth_raw));
 
     let mut userauth_cleanup = Arc::clone(&userauth);
@@ -123,7 +123,7 @@ async fn main() {
 
     let from_address = env::var("FROM_ADDRESS").unwrap();
 
-    let http_state = crate::data::httpstate::HttpState {
+    let http_state = crate::data::state::HttpState {
         sqlx: http_sql,
         cars: http_cars,
         user_auth: http_userauth,
