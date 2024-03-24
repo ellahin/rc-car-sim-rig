@@ -157,7 +157,7 @@ impl Http {
 
         let client = reqwest::Client::new();
 
-        let request_url = self.server_address.clone() + "/user/cars/add";
+        let request_url = self.server_address.clone() + "/user/cars/";
 
         let put_string = serde_json::to_string(&car).unwrap();
 
@@ -196,6 +196,53 @@ impl Http {
         }
 
         let car_res: CreateCarReturn = serde_json::from_str(&cars_raw.unwrap()).unwrap();
+
+        return Ok(car_res);
+    }
+
+    async fn delete_car(&mut self, car_uuid: String) -> Result<GetCars, HttpErrors> {
+        if self.auth_token.is_none() {
+            return Err(HttpErrors::Unauthorized);
+        }
+
+        let client = reqwest::Client::new();
+
+        let request_url = format!("{}/user/cars/{}", self.server_address.clone(), car_uuid);
+
+        let reqwest_raw = client
+            .delete(request_url)
+            .header("Authorization", self.auth_token.clone().unwrap())
+            .send()
+            .await;
+
+        if reqwest_raw.is_err() {
+            let err = reqwest_raw.unwrap_err();
+
+            let error_code = err.status().unwrap();
+
+            if error_code == 401 {
+                return Err(HttpErrors::AuthError);
+            }
+            return Err(HttpErrors::ServerError);
+        }
+
+        let res = reqwest_raw.unwrap();
+
+        let headers = res.headers();
+
+        let auth_token = headers.get("Authorization");
+
+        if auth_token.is_some() {
+            self.auth_token = Some(auth_token.unwrap().to_str().unwrap().to_string());
+        }
+
+        let cars_raw = res.text().await;
+
+        if cars_raw.is_err() {
+            return Err(HttpErrors::ServerError);
+        }
+
+        let car_res: GetCars = serde_json::from_str(&cars_raw.unwrap()).unwrap();
 
         return Ok(car_res);
     }

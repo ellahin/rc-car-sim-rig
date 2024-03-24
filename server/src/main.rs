@@ -143,6 +143,7 @@ async fn main() {
             .service(crate::repo::http::auth::email::verify)
             .service(crate::repo::http::user::cars::get)
             .service(crate::repo::http::user::cars::add)
+            .service(crate::repo::http::user::cars::remove)
     })
     .disable_signals()
     .bind(("127.0.0.1", 8080))
