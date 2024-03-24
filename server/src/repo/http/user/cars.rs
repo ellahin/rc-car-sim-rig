@@ -1,11 +1,10 @@
-use crate::data::httpstate::HttpState;
+use crate::data::state::HttpState;
 use crate::lib::auth;
 
 use common_data::server::json::http::{Car, CarState, GetCars};
 
 use actix_web::get;
 use actix_web::web::Data;
-use actix_web::web::Json;
 use actix_web::HttpRequest;
 use actix_web::HttpResponse;
 use actix_web::Responder;

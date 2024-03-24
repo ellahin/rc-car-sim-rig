@@ -1,5 +1,5 @@
-use crate::data::httpstate::HttpState;
-use crate::data::userauthstruct::UserAuth;
+use crate::data::state::HttpState;
+use crate::data::state::UserAuth;
 use common_data::server::data::jwt_claims::{AuthJwt, EmailAuthStartJwt};
 use common_data::server::json::http::{AuthStartJson, AuthVerifyJson};
 
@@ -105,7 +105,7 @@ async fn put(state: Data<HttpState>, data: Json<AuthStartJson>) -> impl Responde
 
 #[put("/auth/email/verify")]
 pub async fn verify(state: Data<HttpState>, data: Json<AuthVerifyJson>) -> impl Responder {
-    let mut validation = Validation::new(Algorithm::RS256);
+    let validation = Validation::new(Algorithm::RS256);
 
     let token_raw = decode::<EmailAuthStartJwt>(
         &data.jwt,

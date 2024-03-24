@@ -10,7 +10,7 @@ use sqlx::SqlitePool;
 use actix_web::App;
 use actix_web::HttpServer;
 
-use lettre::{SmtpTransport, Transport};
+use lettre::SmtpTransport;
 
 use std::collections::HashMap;
 use std::env;
@@ -21,10 +21,10 @@ use std::time::{Duration, SystemTime};
 #[tokio::main]
 async fn main() {
     // Setting up global states
-    let mut cars_raw: HashMap<String, data::state::CarConnection> = HashMap::new();
-    let mut cars = Arc::new(Mutex::new(cars_raw));
+    let cars_raw: HashMap<String, data::state::CarConnection> = HashMap::new();
+    let cars = Arc::new(Mutex::new(cars_raw));
 
-    let mut cars_cleanup = Arc::clone(&cars);
+    let cars_cleanup = Arc::clone(&cars);
     tokio::spawn(async move {
         loop {
             let now = SystemTime::now();
@@ -45,10 +45,11 @@ async fn main() {
         }
     });
 
-    let mut userauth_raw: HashMap<String, crate::data::state::UserAuth> = HashMap::new();
-    let mut userauth = Arc::new(Mutex::new(userauth_raw));
+    let userauth_raw: HashMap<String, crate::data::state::UserAuth> = HashMap::new();
+    let userauth = Arc::new(Mutex::new(userauth_raw));
 
-    let mut userauth_cleanup = Arc::clone(&userauth);
+    let userauth_cleanup = Arc::clone(&userauth);
+
     tokio::spawn(async move {
         loop {
             let now = SystemTime::now();
