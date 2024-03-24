@@ -2,8 +2,6 @@ mod data;
 mod lib;
 mod repo;
 
-use tokio::{net::UdpSocket, sync::mpsc};
-
 use dotenvy::dotenv;
 
 use sqlx::migrate::{MigrateDatabase, Migrator};
@@ -16,7 +14,6 @@ use lettre::{SmtpTransport, Transport};
 
 use std::collections::HashMap;
 use std::env;
-use std::net::SocketAddr;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime};
@@ -105,57 +102,11 @@ async fn main() {
         .await
         .unwrap();
 
-    // Setting up udp socket handler
-    let socket = UdpSocket::bind("0.0.0.0:8080".parse::<SocketAddr>().unwrap())
-        .await
-        .expect("cannot bind address");
-
-    let udp_read = Arc::new(socket);
-    let udp_write = udp_read.clone();
-    let udp_cars = Arc::clone(&cars);
-
-    let (udp_tx, mut udp_rx) = mpsc::channel::<(Vec<u8>, SocketAddr)>(1_000);
-
-    tokio::spawn(async move {
-        while let Some((bytes, addr)) = udp_rx.recv().await {
-            let len = udp_write.send_to(&bytes, addr).await.unwrap();
-            println!("{:?} bytes sent", len);
-        }
-    });
-
-    let udp_tx_udp_rx = udp_tx.clone();
-
-    tokio::spawn(async move {
-        loop {
-            let mut buff = [0; 4096];
-
-            let incomming = udp_read.recv_from(&mut buff).await;
-
-            if incomming.is_err() {
-                let err = incomming.unwrap_err();
-                println!("error on udp read: {:?}", err);
-                continue;
-            }
-
-            let udp_tx_clone = udp_tx_udp_rx.clone();
-
-            tokio::spawn(async move {
-                let (len, addr) = incomming.unwrap();
-
-                crate::repo::handlers::udphandler::handle_udp(buff, addr, udp_tx_clone.clone())
-                    .await;
-
-                println!("reccived {:?} bytes from {:?}", len, addr);
-            });
-        }
-    });
-
     // Http server
     let http_sql = sql_pool.clone();
 
     let http_cars = cars.clone();
     let http_userauth = userauth.clone();
-    let http_udp_tx = udp_tx.clone();
     let mut smtp_address = "127.0.0.1".to_string();
 
     if env::var("SMTP_ADDRESS").is_err() {
@@ -176,7 +127,6 @@ async fn main() {
         sqlx: http_sql,
         cars: http_cars,
         user_auth: http_userauth,
-        udp_tx: http_udp_tx,
         jwt_secret: jwt_secret,
         smtp_transport: smtp_transport_raw.unwrap().build(),
         from_address: from_address,
