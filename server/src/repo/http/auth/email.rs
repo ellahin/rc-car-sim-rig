@@ -1,5 +1,6 @@
 use crate::data::state::HttpState;
-use crate::data::state::UserAuth;
+use crate::repo::database::base::DataBase;
+
 use common_data::server::data::jwt_claims::{AuthJwt, EmailAuthStartJwt};
 use common_data::server::json::http::{AuthStartJson, AuthVerifyJson};
 
@@ -20,10 +21,9 @@ use lettre::Message;
 use lettre::Transport;
 
 use chrono::prelude::*;
-use chrono::Duration;
+use chrono::TimeDelta;
 
 use std::str::FromStr;
-use std::time::SystemTime;
 
 #[put("/auth/email/")]
 async fn put(state: Data<HttpState>, data: Json<AuthStartJson>) -> impl Responder {
@@ -45,16 +45,14 @@ async fn put(state: Data<HttpState>, data: Json<AuthStartJson>) -> impl Responde
 
     let auth_code: String = auth_code_raw.iter().collect();
 
-    let auth_struct = UserAuth {
-        code: auth_code.clone(),
-        created: SystemTime::now(),
-    };
+    let auth_insert = state
+        .database
+        .create_user_auth(data.emailaddress.clone(), auth_code.clone())
+        .await;
 
-    let mut authstate = state.user_auth.lock().unwrap();
-
-    authstate.insert(data.emailaddress.clone(), auth_struct);
-
-    drop(authstate);
+    if auth_insert.is_err() {
+        return HttpResponse::InternalServerError().body("Server Error");
+    }
 
     let email_message = Message::builder()
         .from(state.from_address.clone().parse().unwrap())
@@ -79,7 +77,7 @@ async fn put(state: Data<HttpState>, data: Json<AuthStartJson>) -> impl Responde
 
     let current_time = Utc::now();
     // Offsetting by 15 min
-    let offset_time = current_time.clone() + Duration::seconds(900);
+    let offset_time = current_time.clone() + TimeDelta::try_seconds(900).unwrap();
 
     let jwt_claims: EmailAuthStartJwt = EmailAuthStartJwt {
         email: email.to_string(),
@@ -119,9 +117,13 @@ pub async fn verify(state: Data<HttpState>, data: Json<AuthVerifyJson>) -> impl 
 
     let token = token_raw.unwrap().claims;
 
-    let mut authstate = state.user_auth.lock().unwrap();
+    let auth_err = state.database.fetch_user_auth(token.email.clone()).await;
 
-    let auth_raw = authstate.get(&token.email.clone());
+    if auth_err.is_err() {
+        return HttpResponse::InternalServerError().body("Server Error");
+    }
+
+    let auth_raw = auth_err.unwrap();
 
     if auth_raw.is_none() {
         return HttpResponse::Forbidden().body("Email Auth doesn't exist");
@@ -133,13 +135,15 @@ pub async fn verify(state: Data<HttpState>, data: Json<AuthVerifyJson>) -> impl 
         return HttpResponse::Forbidden().body("Code Does not match");
     }
 
-    authstate.remove(&token.email.clone());
+    let auth_remove = state.database.delete_user_auth(token.email.clone()).await;
 
-    drop(authstate);
+    if auth_remove.is_err() {
+        return HttpResponse::InternalServerError().body("Server Error");
+    }
 
     let current_time = Utc::now();
     // Offsetting by 1 hour
-    let offset_time = current_time.clone() + Duration::seconds(3600);
+    let offset_time = current_time.clone() + TimeDelta::try_seconds(3600).unwrap();
 
     let jwt_claims: AuthJwt = AuthJwt {
         email: token.email.clone(),
@@ -161,33 +165,10 @@ pub async fn verify(state: Data<HttpState>, data: Json<AuthVerifyJson>) -> impl 
         return HttpResponse::InternalServerError().body("Server Error");
     }
 
-    let get_user_raw = sqlx::query!(
-        "SELECT username from users where username = ?1",
-        token.email
-    )
-    .fetch_optional(&state.sqlx)
-    .await;
+    let user_update = state.database.user_login(token.email).await;
 
-    if get_user_raw.is_err() {
+    if user_update.is_err() {
         return HttpResponse::InternalServerError().body("Server Error");
-    }
-
-    let get_user = get_user_raw.unwrap();
-
-    if get_user.is_none() {
-        let _ = sqlx::query!(
-            "INSERT INTO users(username, lastsignin) VALUES(?1, datetime('now'))",
-            token.email
-        )
-        .execute(&state.sqlx)
-        .await;
-    } else {
-        let _ = sqlx::query!(
-            "update users set lastsignin = datetime('now') where username = ?1",
-            token.email
-        )
-        .execute(&state.sqlx)
-        .await;
     }
 
     return HttpResponse::Ok().body(jwt.unwrap());

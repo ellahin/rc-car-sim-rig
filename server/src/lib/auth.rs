@@ -3,7 +3,7 @@ use common_data::server::data::jwt_claims::AuthJwt;
 use jsonwebtoken::{decode, encode, Algorithm, DecodingKey, EncodingKey, Header, Validation};
 
 use chrono::prelude::*;
-use chrono::Duration;
+use chrono::TimeDelta;
 
 pub struct AuthState {
     pub claims: AuthJwt,
@@ -31,7 +31,7 @@ fn verify(token: String, secret: String) -> Result<AuthJwt, ()> {
 fn refresh_token(claims: AuthJwt, secret: String) -> Result<String, ()> {
     let current_time = Utc::now();
     // Offsetting by 15 min
-    let offset_time = current_time.clone() + Duration::seconds(900);
+    let offset_time = current_time.clone() + TimeDelta::try_seconds(900).unwrap();
 
     if current_time.timestamp() > claims.exp {
         return Err(());
@@ -72,7 +72,7 @@ pub fn validate_and_refresh(token: String, secret: String) -> Result<AuthState, 
 
     let now = Utc::now();
 
-    let refresh_offset = now.clone() + Duration::seconds(300);
+    let refresh_offset = now.clone() + TimeDelta::try_seconds(300).unwrap();
 
     if token.exp > now.timestamp() {
         return Err(());

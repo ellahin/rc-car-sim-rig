@@ -1,5 +1,6 @@
 use crate::data::state::HttpState;
 use crate::lib::auth;
+use crate::repo::database::base::{CarFull, DataBase};
 
 use common_data::server::json::http::{Car, CarState, CreateCar, CreateCarReturn, GetCars};
 
@@ -12,8 +13,6 @@ use actix_web::web::Path;
 use actix_web::HttpRequest;
 use actix_web::HttpResponse;
 use actix_web::Responder;
-
-use sqlx;
 
 use serde_json;
 
@@ -42,12 +41,10 @@ async fn get(state: Data<HttpState>, req: HttpRequest) -> impl Responder {
 
     let auth_state = auth_state_raw.unwrap();
 
-    let car_query = sqlx::query!(
-        "SELECT * from cars where username = ?1",
-        auth_state.claims.email
-    )
-    .fetch_all(&state.sqlx)
-    .await;
+    let car_query = state
+        .database
+        .fetch_cars_by_user(auth_state.claims.email.clone())
+        .await;
 
     if car_query.is_err() {
         return HttpResponse::ServiceUnavailable().body("Server Error");
@@ -57,10 +54,12 @@ async fn get(state: Data<HttpState>, req: HttpRequest) -> impl Responder {
 
     let mut return_cars: Vec<Car> = Vec::new();
 
-    let car_state = state.cars.lock().unwrap();
-
     for car in cars {
-        let car_temp = car_state.get(&car.uuid);
+        let car_temp = state
+            .database
+            .get_car_state(car.uuid.clone())
+            .await
+            .unwrap();
 
         if car_temp.is_none() {
             return_cars.push(Car {
@@ -76,8 +75,6 @@ async fn get(state: Data<HttpState>, req: HttpRequest) -> impl Responder {
             })
         }
     }
-
-    drop(car_state);
 
     let return_struct = GetCars { cars: return_cars };
 
@@ -109,12 +106,10 @@ async fn add(state: Data<HttpState>, req: HttpRequest, data: Json<CreateCar>) ->
 
     let auth_state = auth_state_raw.unwrap();
 
-    let car_query = sqlx::query!(
-        "SELECT * from cars where username = ?1",
-        auth_state.claims.email
-    )
-    .fetch_all(&state.sqlx)
-    .await;
+    let car_query = state
+        .database
+        .fetch_cars_by_user(auth_state.claims.email.clone())
+        .await;
 
     if car_query.is_err() {
         return HttpResponse::ServiceUnavailable().body("Server Error");
@@ -144,39 +139,36 @@ async fn add(state: Data<HttpState>, req: HttpRequest, data: Json<CreateCar>) ->
 
     let mut car_uuid = Uuid::new_v4().to_string();
 
-    let car_query = sqlx::query!("SELECT * from cars where uuid = ?1", car_uuid)
-        .fetch_all(&state.sqlx)
-        .await;
+    let car_query = state.database.fetch_car(car_uuid.clone()).await;
 
     if car_query.is_err() {
         return HttpResponse::ServiceUnavailable().body("Server Error");
     }
 
-    let mut cars = car_query.unwrap().len();
+    let mut cars = car_query.unwrap();
 
-    while cars != 0 {
+    while cars.is_some() {
         car_uuid = Uuid::new_v4().to_string();
 
-        let car_query = sqlx::query!("SELECT * from cars where uuid = ?1", car_uuid)
-            .fetch_all(&state.sqlx)
-            .await;
+        let car_query = state.database.fetch_car(car_uuid.clone()).await;
 
         if car_query.is_err() {
             return HttpResponse::ServiceUnavailable().body("Server Error");
         }
 
-        cars = car_query.unwrap().len();
+        cars = car_query.unwrap();
     }
 
-    let insert_query = sqlx::query!(
-        "INSERT INTO cars (uuid, secret, name, username) VALUES(?1, ?2, ?3, ?4)",
-        car_uuid,
-        key_becrypt,
-        data.name,
-        auth_state.claims.email
-    )
-    .execute(&state.sqlx)
-    .await;
+    let insert_query = state
+        .database
+        .put_car(CarFull {
+            name: data.name.clone(),
+            uuid: car_uuid.clone(),
+            secret: key_becrypt,
+            username: auth_state.claims.email.clone(),
+            status: None,
+        })
+        .await;
 
     if insert_query.is_err() {
         return HttpResponse::ServiceUnavailable().body("Server Error");
@@ -214,9 +206,7 @@ async fn remove(state: Data<HttpState>, req: HttpRequest, path: Path<(String,)>)
 
     let car_uuid = path.into_inner().0;
 
-    let car_query = sqlx::query!("SELECT * from cars where uuid = ?1", car_uuid)
-        .fetch_optional(&state.sqlx)
-        .await;
+    let car_query = state.database.fetch_car(car_uuid.clone()).await;
 
     if car_query.is_err() {
         return HttpResponse::ServiceUnavailable().body("Server Error");
@@ -234,21 +224,16 @@ async fn remove(state: Data<HttpState>, req: HttpRequest, path: Path<(String,)>)
         return HttpResponse::Unauthorized().body("Not Authorized");
     }
 
-    let delet_query = sqlx::query!("DELETE FROM cars WHERE uuid = ?1", car_uuid)
-        .execute(&state.sqlx)
-        .await;
+    let delet_query = state.database.delete_car(car_uuid.clone()).await;
 
     if delet_query.is_err() {
         return HttpResponse::ServiceUnavailable().body("Server Error");
     }
 
-    let car_query = sqlx::query!(
-        "SELECT * from cars where username = ?1",
-        auth_state.claims.email
-    )
-    .fetch_all(&state.sqlx)
-    .await;
-
+    let car_query = state
+        .database
+        .fetch_cars_by_user(auth_state.claims.email)
+        .await;
     if car_query.is_err() {
         return HttpResponse::ServiceUnavailable().body("Server Error");
     }
@@ -257,10 +242,12 @@ async fn remove(state: Data<HttpState>, req: HttpRequest, path: Path<(String,)>)
 
     let mut return_cars: Vec<Car> = Vec::new();
 
-    let car_state = state.cars.lock().unwrap();
-
     for car in cars {
-        let car_temp = car_state.get(&car.uuid);
+        let car_temp = state
+            .database
+            .get_car_state(car.uuid.clone())
+            .await
+            .unwrap();
 
         if car_temp.is_none() {
             return_cars.push(Car {
@@ -276,8 +263,6 @@ async fn remove(state: Data<HttpState>, req: HttpRequest, path: Path<(String,)>)
             })
         }
     }
-
-    drop(car_state);
 
     let return_struct = GetCars { cars: return_cars };
 

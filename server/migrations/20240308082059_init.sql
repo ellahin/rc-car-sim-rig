@@ -1,6 +1,6 @@
 CREATE TABLE users (
   username varchar(255) NOT NULL,
-  lastsignin DATETIME NOT NULL,
+  lastsignin BIGINT NOT NULL,
   PRIMARY KEY(username)
 );
 
