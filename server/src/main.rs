@@ -17,7 +17,11 @@ use std::env;
 #[tokio::main]
 async fn main() {
     // Setting up global states
-    dotenv().expect(".env file not found");
+    let dot_env = dotenv();
+
+    if dot_env.is_err() {
+        println!("Warning: Dotenv file not found");
+    }
 
     if env::var("JWT_SECRETN").is_err() {
         panic!("JWT_SECRETN not in environment vars");
