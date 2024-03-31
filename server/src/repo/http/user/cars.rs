@@ -22,6 +22,8 @@ use uuid::Uuid;
 
 use rand::{distributions::Alphanumeric, Rng};
 
+use chrono::prelude::*;
+
 #[get("/user/cars")]
 async fn get(state: Data<HttpState>, req: HttpRequest) -> impl Responder {
     let auth_token = req.headers().get("Authorization");
@@ -52,31 +54,7 @@ async fn get(state: Data<HttpState>, req: HttpRequest) -> impl Responder {
 
     let cars = car_query.unwrap();
 
-    let mut return_cars: Vec<Car> = Vec::new();
-
-    for car in cars {
-        let car_temp = state
-            .database
-            .get_car_state(car.uuid.clone())
-            .await
-            .unwrap();
-
-        if car_temp.is_none() {
-            return_cars.push(Car {
-                uuid: car.uuid,
-                status: CarState::Offline,
-                name: car.name,
-            })
-        } else {
-            return_cars.push(Car {
-                uuid: car.uuid,
-                status: CarState::Online,
-                name: car.name,
-            })
-        }
-    }
-
-    let return_struct = GetCars { cars: return_cars };
+    let return_struct = GetCars { cars: cars };
 
     if auth_state.refresh_token.is_some() {
         return HttpResponse::Ok()
@@ -166,7 +144,8 @@ async fn add(state: Data<HttpState>, req: HttpRequest, data: Json<CreateCar>) ->
             uuid: car_uuid.clone(),
             secret: key_becrypt,
             username: auth_state.claims.email.clone(),
-            status: None,
+            last_ping: None,
+            last_updated: Utc::now().naive_utc(),
         })
         .await;
 
@@ -240,31 +219,7 @@ async fn remove(state: Data<HttpState>, req: HttpRequest, path: Path<(String,)>)
 
     let cars = car_query.unwrap();
 
-    let mut return_cars: Vec<Car> = Vec::new();
-
-    for car in cars {
-        let car_temp = state
-            .database
-            .get_car_state(car.uuid.clone())
-            .await
-            .unwrap();
-
-        if car_temp.is_none() {
-            return_cars.push(Car {
-                uuid: car.uuid,
-                status: CarState::Offline,
-                name: car.name,
-            })
-        } else {
-            return_cars.push(Car {
-                uuid: car.uuid,
-                status: CarState::Online,
-                name: car.name,
-            })
-        }
-    }
-
-    let return_struct = GetCars { cars: return_cars };
+    let return_struct = GetCars { cars: cars };
 
     if auth_state.refresh_token.is_some() {
         return HttpResponse::Ok()

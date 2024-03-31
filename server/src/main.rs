@@ -2,10 +2,9 @@ mod data;
 mod lib;
 mod repo;
 
-use repo::database::base::DataBase;
-use repo::database::sqlite::SqliteDatabase;
-
 use dotenvy::dotenv;
+use repo::database::base::DataBase;
+use repo::database::postgres::PostgresDatabase;
 
 use actix_web::App;
 use actix_web::HttpServer;
@@ -39,7 +38,7 @@ async fn main() {
 
     let database_url = env::var("DATABASE_URL").unwrap();
 
-    let database = SqliteDatabase::new(database_url)
+    let database = PostgresDatabase::new(database_url)
         .await
         .expect("Cannot connect to database");
 

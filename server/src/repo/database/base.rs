@@ -1,17 +1,13 @@
-use common_data::server::data::telementry::Telementry;
 use common_data::server::json::http::Car;
 
-use serde::{Deserialize, Serialize};
-
 use chrono::prelude::*;
-
-use async_trait::async_trait;
 
 #[derive(Debug)]
 pub enum DatabaseError {
     ServerError,
     DoesNotExist,
     QueryError,
+    ConnectionError,
 }
 
 pub trait DataBase {
@@ -25,36 +21,27 @@ pub trait DataBase {
     async fn fetch_car(&self, car_id: String) -> Result<Option<CarFull>, DatabaseError>;
     async fn delete_car(&self, car_id: String) -> Result<(), DatabaseError>;
     async fn put_car(&self, car: CarFull) -> Result<(), DatabaseError>;
-    async fn put_car_state(&self, car_id: String, car_state: CarState)
-        -> Result<(), DatabaseError>;
-    async fn get_car_state(&self, car_id: String) -> Result<Option<CarState>, DatabaseError>;
     async fn ping_car_state(&self, car_id: String) -> Result<(), DatabaseError>;
 }
 
 #[derive(Debug, Clone)]
 pub struct UserAuth {
     pub code: String,
-    pub created: DateTime<Utc>,
+    pub created: NaiveDateTime,
 }
 
 #[derive(Debug, Clone)]
 pub struct User {
     pub username: String,
-    pub last_login: DateTime<Utc>,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct CarState {
-    pub username: Option<String>,
-    pub telementry: Option<Telementry>,
-    pub last_changed: i64,
+    pub last_login: NaiveDateTime,
 }
 
 #[derive(Debug, Clone)]
 pub struct CarFull {
     pub uuid: String,
-    pub status: Option<CarState>,
     pub name: String,
     pub secret: String,
     pub username: String,
+    pub last_updated: NaiveDateTime,
+    pub last_ping: Option<NaiveDateTime>,
 }

@@ -1,2 +1,2 @@
 pub mod base;
-pub mod sqlite;
+pub mod postgres;
