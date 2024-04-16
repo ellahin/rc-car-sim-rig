@@ -1,3 +1,5 @@
+CREATE EXTENSION pg_cron;
+
 CREATE TABLE users (
   username varchar(255) NOT NULL,
   lastsignin timestamp NOT NULL DEFAULT (NOW() at time zone 'utc'), 
