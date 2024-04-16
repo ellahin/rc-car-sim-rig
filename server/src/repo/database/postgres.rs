@@ -21,13 +21,12 @@ impl DataBase for PostgresDatabase {
     async fn new(connection_url: String) -> Result<Box<Self>, DatabaseError> {
         let migration_path = Path::new("./migrations");
 
-        let pg_pool_raw = PgPool::connect(&connection_url).await;
+        let pg_pool = PgPool::connect(&connection_url).await;
 
-        if pg_pool_raw.is_err() {
-            return Err(DatabaseError::ConnectionError);
-        }
-
-        let pg_pool = pg_pool_raw.unwrap();
+        let pg_pool = match pg_pool {
+            Ok(p) => p,
+            Err(_err) => return Err(DatabaseError::ConnectionError),
+        };
 
         Migrator::new(migration_path)
             .await
@@ -42,16 +41,14 @@ impl DataBase for PostgresDatabase {
     }
 
     async fn user_login(&self, username: String) -> Result<(), DatabaseError> {
-        let get_user_raw = sqlx::query!("SELECT username from users where username = $1", username)
+        let get_user = sqlx::query!("SELECT username from users where username = $1", username)
             .fetch_optional(&*self.pool)
             .await;
 
-        if get_user_raw.is_err() {
-            return Err(DatabaseError::ServerError);
-        }
-
-        let get_user = get_user_raw.unwrap();
-
+        let get_user = match get_user {
+            Ok(p) => p,
+            Err(_err) => return Err(DatabaseError::QueryError),
+        };
         if get_user.is_none() {
             let _ = sqlx::query!("INSERT INTO users(username) VALUES($1)", username,)
                 .execute(&*self.pool)
@@ -69,36 +66,33 @@ impl DataBase for PostgresDatabase {
     }
 
     async fn fetch_user_auth(&self, username: String) -> Result<Option<UserAuth>, DatabaseError> {
-        let get_auth = sqlx::query!("SELECT * from auth WHERE username = $1", username)
+        let auth_opt = sqlx::query!("SELECT * from auth WHERE username = $1", username)
             .fetch_optional(&*self.pool)
             .await;
 
-        if get_auth.is_err() {
-            return Err(DatabaseError::ServerError);
+        let auth_opt = match auth_opt {
+            Ok(p) => p,
+            Err(_err) => return Err(DatabaseError::QueryError),
+        };
+
+        match auth_opt {
+            Some(auth) => Ok(Some(UserAuth {
+                code: auth.code.clone(),
+                created: auth.timestamp.clone(),
+            })),
+            None => Ok(None),
         }
-
-        let auth_opt = get_auth.unwrap();
-
-        if auth_opt.is_none() {
-            return Ok(None);
-        }
-
-        let auth = auth_opt.unwrap();
-
-        return Ok(Some(UserAuth {
-            code: auth.code.clone(),
-            created: auth.timestamp.clone(),
-        }));
     }
 
     async fn create_user_auth(&self, username: String, code: String) -> Result<(), DatabaseError> {
         let auth_fetch = self.fetch_user_auth(username.clone()).await;
 
-        if auth_fetch.is_err() {
-            return Err(DatabaseError::ServerError);
-        }
+        let auth_fetch = match auth_fetch {
+            Ok(e) => e,
+            Err(_) => return Err(DatabaseError::ServerError),
+        };
 
-        if auth_fetch.unwrap().is_some() {
+        if auth_fetch.is_some() {
             let auth_delete = self.delete_user_auth(username.clone()).await;
             if auth_delete.is_err() {
                 return Err(DatabaseError::ServerError);
@@ -113,47 +107,40 @@ impl DataBase for PostgresDatabase {
         .execute(&*self.pool)
         .await;
 
-        if query.is_err() {
-            return Err(DatabaseError::ServerError);
+        match query {
+            Ok(_) => Ok(()),
+            Err(_) => Err(DatabaseError::ServerError),
         }
-
-        return Ok(());
     }
 
     async fn fetch_user(&self, username: String) -> Result<Option<User>, DatabaseError> {
-        let get_user_raw = sqlx::query!("SELECT * from users where username = $1", username)
+        let get_user = sqlx::query!("SELECT * from users where username = $1", username)
             .fetch_optional(&*self.pool)
             .await;
 
-        if get_user_raw.is_err() {
-            return Err(DatabaseError::ServerError);
+        let get_user = match get_user {
+            Ok(e) => e,
+            Err(_) => return Err(DatabaseError::ServerError),
+        };
+
+        match get_user {
+            Some(user) => Ok(Some(User {
+                username: user.username.clone(),
+                last_login: user.lastsignin,
+            })),
+            None => Ok(None),
         }
-
-        let get_user = get_user_raw.unwrap();
-
-        if get_user.is_some() {
-            let temp = get_user.unwrap();
-            let object = User {
-                username: temp.username.clone(),
-                last_login: temp.lastsignin,
-            };
-
-            return Ok(Some(object));
-        }
-
-        return Ok(None);
     }
 
     async fn fetch_cars_by_user(&self, username: String) -> Result<Vec<Car>, DatabaseError> {
-        let car_query = sqlx::query!("SELECT * from cars where username = $1", username)
+        let cars = sqlx::query!("SELECT * from cars where username = $1", username)
             .fetch_all(&*self.pool)
             .await;
 
-        if car_query.is_err() {
-            return Err(DatabaseError::ServerError);
-        }
-
-        let cars = car_query.unwrap();
+        let cars = match cars {
+            Ok(c) => c,
+            Err(_) => return Err(DatabaseError::ServerError),
+        };
 
         let mut return_cars: Vec<Car> = Vec::new();
 
@@ -185,44 +172,38 @@ impl DataBase for PostgresDatabase {
             }
         }
 
-        return Ok(return_cars);
+        Ok(return_cars)
     }
 
     async fn fetch_car(&self, car_id: String) -> Result<Option<CarFull>, DatabaseError> {
-        let car_query = sqlx::query!("SELECT * from cars where uuid = $1", car_id)
+        let car = sqlx::query!("SELECT * from cars where uuid = $1", car_id)
             .fetch_optional(&*self.pool)
             .await;
+        let car = match car {
+            Ok(c) => c,
+            Err(_) => return Err(DatabaseError::ServerError),
+        };
 
-        if car_query.is_err() {
-            return Err(DatabaseError::ServerError);
+        match car {
+            None => Ok(None),
+            Some(c) => Ok(Some(CarFull {
+                uuid: c.uuid,
+                name: c.name,
+                secret: c.secret,
+                username: c.username,
+                last_updated: c.last_updated,
+                last_ping: c.last_ping,
+            })),
         }
-
-        let car_opt = car_query.unwrap();
-
-        if car_opt.is_none() {
-            return Ok(None);
-        }
-
-        let car = car_opt.unwrap();
-
-        return Ok(Some(CarFull {
-            uuid: car.uuid,
-            name: car.name,
-            secret: car.secret,
-            username: car.username,
-            last_updated: car.last_updated,
-            last_ping: car.last_ping,
-        }));
     }
 
     async fn put_car(&self, car: CarFull) -> Result<(), DatabaseError> {
-        let car_query = self.fetch_car(car.uuid.clone()).await;
+        let car_opt = self.fetch_car(car.uuid.clone()).await;
 
-        if car_query.is_err() {
-            return Err(car_query.unwrap_err());
-        }
-
-        let car_opt = car_query.unwrap();
+        let car_opt = match car_opt {
+            Ok(c) => c,
+            Err(e) => return Err(e),
+        };
 
         if car_opt.is_some() {
             let query_status = sqlx::query!(
@@ -258,36 +239,34 @@ impl DataBase for PostgresDatabase {
     }
 
     async fn delete_car(&self, car_id: String) -> Result<(), DatabaseError> {
-        let car_query = self.fetch_car(car_id.clone()).await;
+        let car_opt = self.fetch_car(car_id.clone()).await;
 
-        if car_query.is_err() {
-            return Err(car_query.unwrap_err());
-        }
+        let car_opt = match car_opt {
+            Ok(c) => c,
+            Err(e) => return Err(e),
+        };
 
-        let car = car_query.unwrap();
-
-        if car.is_none() {
+        if car_opt.is_none() {
             return Ok(());
         }
 
-        let delet_query = sqlx::query!("DELETE FROM cars WHERE uuid = $1", car_id)
+        let delete_query = sqlx::query!("DELETE FROM cars WHERE uuid = $1", car_id)
             .execute(&*self.pool)
             .await;
 
-        if delet_query.is_err() {
-            return Err(DatabaseError::QueryError);
+        match delete_query {
+            Ok(_) => Ok(()),
+            Err(_) => return Err(DatabaseError::QueryError),
         }
-        return Ok(());
     }
 
     async fn delete_user_auth(&self, username: String) -> Result<(), DatabaseError> {
-        let fetch_user = self.fetch_user_auth(username.clone()).await;
+        let user = self.fetch_user_auth(username.clone()).await;
 
-        if fetch_user.is_err() {
-            return Err(fetch_user.unwrap_err());
-        }
-
-        let user = fetch_user.unwrap();
+        let user = match user {
+            Ok(u) => u,
+            Err(e) => return Err(e),
+        };
 
         if user.is_none() {
             return Ok(());
@@ -297,11 +276,10 @@ impl DataBase for PostgresDatabase {
             .execute(&*self.pool)
             .await;
 
-        if query.is_err() {
-            return Err(DatabaseError::ServerError);
+        match query {
+            Ok(_) => Ok(()),
+            Err(_) => Err(DatabaseError::ServerError),
         }
-
-        return Ok(());
     }
 
     async fn ping_car_state(&self, car_id: String) -> Result<(), DatabaseError> {
@@ -312,10 +290,9 @@ impl DataBase for PostgresDatabase {
         .execute(&*self.pool)
         .await;
 
-        if query.is_err() {
-            return Err(DatabaseError::ServerError);
+        match query {
+            Ok(_) => Ok(()),
+            Err(_) => Err(DatabaseError::ServerError),
         }
-
-        return Ok(());
     }
 }
