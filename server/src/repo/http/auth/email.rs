@@ -27,13 +27,10 @@ use std::str::FromStr;
 
 #[put("/auth/email/")]
 async fn put(state: Data<HttpState>, data: Json<AuthStartJson>) -> impl Responder {
-    let email_res = EmailAddress::from_str(&data.emailaddress.clone());
-
-    if email_res.is_err() {
-        return HttpResponse::BadRequest().body("Bad Email");
-    }
-
-    let email = email_res.unwrap();
+    let email = match EmailAddress::from_str(&data.emailaddress.clone()) {
+        Ok(e) => e,
+        Err(_) => return HttpResponse::BadRequest().body("Bad Email"),
+    };
 
     let mut auth_code_raw: Vec<char> = Vec::new();
     let mut rng = rand::thread_rng();
@@ -87,49 +84,38 @@ async fn put(state: Data<HttpState>, data: Json<AuthStartJson>) -> impl Responde
 
     let jwt_header = Header::new(Algorithm::RS256);
 
-    let jwt = encode(
+    match encode(
         &jwt_header,
         &jwt_claims,
         &EncodingKey::from_secret(state.jwt_secret.clone().as_bytes()),
-    );
-
-    if jwt.is_err() {
-        println!("Cannot encode JWT Toket: {}", jwt.unwrap_err());
-        return HttpResponse::InternalServerError().body("Server Error");
+    ) {
+        Ok(j) => HttpResponse::Ok().body(j),
+        Err(_) => HttpResponse::InternalServerError().body("Server Error"),
     }
-
-    return HttpResponse::Ok().body(jwt.unwrap());
 }
 
 #[put("/auth/email/verify")]
 pub async fn verify(state: Data<HttpState>, data: Json<AuthVerifyJson>) -> impl Responder {
     let validation = Validation::new(Algorithm::RS256);
 
-    let token_raw = decode::<EmailAuthStartJwt>(
+    let token = match decode::<EmailAuthStartJwt>(
         &data.jwt,
         &DecodingKey::from_secret(state.jwt_secret.clone().as_bytes()),
         &validation,
-    );
+    ) {
+        Ok(t) => t.claims,
+        Err(_) => return HttpResponse::Forbidden().body("Bad Auth Token"),
+    };
 
-    if token_raw.is_err() {
-        return HttpResponse::Forbidden().body("Bad Auth Token");
-    }
+    let auth = state.database.fetch_user_auth(token.email.clone()).await;
 
-    let token = token_raw.unwrap().claims;
-
-    let auth_err = state.database.fetch_user_auth(token.email.clone()).await;
-
-    if auth_err.is_err() {
-        return HttpResponse::InternalServerError().body("Server Error");
-    }
-
-    let auth_raw = auth_err.unwrap();
-
-    if auth_raw.is_none() {
-        return HttpResponse::Forbidden().body("Email Auth doesn't exist");
-    }
-
-    let auth = auth_raw.unwrap();
+    let auth = match auth {
+        Err(_) => return HttpResponse::InternalServerError().body("Server Error"),
+        Ok(ar) => match ar {
+            Some(a) => a,
+            None => return HttpResponse::Forbidden().body("Email Auth doesn't exist"),
+        },
+    };
 
     if auth.code != data.auth_code {
         return HttpResponse::Forbidden().body("Code Does not match");
@@ -154,22 +140,17 @@ pub async fn verify(state: Data<HttpState>, data: Json<AuthVerifyJson>) -> impl 
 
     let jwt_header = Header::new(Algorithm::RS256);
 
-    let jwt = encode(
+    let jwt = match encode(
         &jwt_header,
         &jwt_claims,
         &EncodingKey::from_secret(state.jwt_secret.clone().as_bytes()),
-    );
+    ) {
+        Ok(j) => j,
+        Err(_) => return HttpResponse::InternalServerError().body("Server Error"),
+    };
 
-    if jwt.is_err() {
-        println!("Cannot encode JWT Toket: {}", jwt.unwrap_err());
-        return HttpResponse::InternalServerError().body("Server Error");
+    match state.database.user_login(token.email).await {
+        Ok(_) => HttpResponse::Ok().body(jwt),
+        Err(_) => HttpResponse::InternalServerError().body("Server Error"),
     }
-
-    let user_update = state.database.user_login(token.email).await;
-
-    if user_update.is_err() {
-        return HttpResponse::InternalServerError().body("Server Error");
-    }
-
-    return HttpResponse::Ok().body(jwt.unwrap());
 }
