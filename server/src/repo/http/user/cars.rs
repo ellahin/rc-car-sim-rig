@@ -28,72 +28,69 @@ use chrono::prelude::*;
 async fn get(state: Data<HttpState>, req: HttpRequest) -> impl Responder {
     let auth_token = req.headers().get("Authorization");
 
-    if auth_token.is_none() {
-        return HttpResponse::Unauthorized().body("No authorization token");
-    }
+    let auth_state = match auth_token {
+        None => return HttpResponse::Unauthorized().body("No authorization token"),
+        Some(ah) => match ah.to_str() {
+            Err(_) => return HttpResponse::BadRequest().body("Bad authorization token"),
+            Ok(ast) => {
+                match auth::validate_and_refresh(ast.to_string(), state.jwt_secret.clone()) {
+                    Err(_) => return HttpResponse::BadRequest().body("Bad authorization token"),
+                    Ok(a) => a,
+                }
+            }
+        },
+    };
 
-    let auth_state_raw = auth::validate_and_refresh(
-        auth_token.unwrap().to_str().unwrap().to_string(),
-        state.jwt_secret.clone(),
-    );
-
-    if auth_state_raw.is_err() {
-        return HttpResponse::Unauthorized().body("Invalid Authorization");
-    }
-
-    let auth_state = auth_state_raw.unwrap();
-
-    let car_query = state
+    let cars = state
         .database
         .fetch_cars_by_user(auth_state.claims.email.clone())
         .await;
 
-    if car_query.is_err() {
-        return HttpResponse::ServiceUnavailable().body("Server Error");
-    }
-
-    let cars = car_query.unwrap();
+    let cars = match cars {
+        Ok(c) => c,
+        Err(_) => return HttpResponse::ServiceUnavailable().body("Server Error"),
+    };
 
     let return_struct = GetCars { cars: cars };
 
-    if auth_state.refresh_token.is_some() {
-        return HttpResponse::Ok()
-            .insert_header(("Authorization", auth_state.refresh_token.unwrap()))
-            .body(serde_json::to_string(&return_struct).unwrap());
-    }
+    let return_string = match serde_json::to_string(&return_struct) {
+        Ok(s) => s,
+        Err(_) => return HttpResponse::ServiceUnavailable().body("Server Error"),
+    };
 
-    return HttpResponse::Ok().body(serde_json::to_string(&return_struct).unwrap());
+    match auth_state.refresh_token {
+        Some(t) => HttpResponse::Ok()
+            .insert_header(("Authorization", t))
+            .body(return_string),
+        None => return HttpResponse::Ok().body(return_string),
+    }
 }
 
 #[put("/user/cars/")]
 async fn add(state: Data<HttpState>, req: HttpRequest, data: Json<CreateCar>) -> impl Responder {
     let auth_token = req.headers().get("Authorization");
 
-    if auth_token.is_none() {
-        return HttpResponse::Unauthorized().body("No authorization token");
-    }
+    let auth_state = match auth_token {
+        None => return HttpResponse::Unauthorized().body("No authorization token"),
+        Some(ah) => match ah.to_str() {
+            Err(_) => return HttpResponse::BadRequest().body("Bad authorization token"),
+            Ok(ast) => {
+                match auth::validate_and_refresh(ast.to_string(), state.jwt_secret.clone()) {
+                    Err(_) => return HttpResponse::BadRequest().body("Bad authorization token"),
+                    Ok(a) => a,
+                }
+            }
+        },
+    };
 
-    let auth_state_raw = auth::validate_and_refresh(
-        auth_token.unwrap().to_str().unwrap().to_string(),
-        state.jwt_secret.clone(),
-    );
-
-    if auth_state_raw.is_err() {
-        return HttpResponse::Unauthorized().body("Invalid Authorization");
-    }
-
-    let auth_state = auth_state_raw.unwrap();
-
-    let car_query = state
+    let cars = state
         .database
         .fetch_cars_by_user(auth_state.claims.email.clone())
         .await;
-
-    if car_query.is_err() {
-        return HttpResponse::ServiceUnavailable().body("Server Error");
-    }
-
-    let cars = car_query.unwrap();
+    let cars = match cars {
+        Ok(c) => c,
+        Err(_) => return HttpResponse::ServiceUnavailable().body("Server Error"),
+    };
 
     if cars.len() >= 2 {
         return HttpResponse::Conflict().body("Only two cars are allowed, please delete a car");
@@ -113,28 +110,29 @@ async fn add(state: Data<HttpState>, req: HttpRequest, data: Json<CreateCar>) ->
         .map(char::from)
         .collect();
 
-    let key_becrypt = bcrypt::hash(key.clone(), bcrypt::DEFAULT_COST).unwrap();
+    let key_becrypt = match bcrypt::hash(key.clone(), bcrypt::DEFAULT_COST) {
+        Ok(k) => k,
+        Err(_) => return HttpResponse::ServiceUnavailable().body("Server Error"),
+    };
 
     let mut car_uuid = Uuid::new_v4().to_string();
 
-    let car_query = state.database.fetch_car(car_uuid.clone()).await;
+    let car = state.database.fetch_car(car_uuid.clone()).await;
 
-    if car_query.is_err() {
-        return HttpResponse::ServiceUnavailable().body("Server Error");
-    }
+    let mut car = match car {
+        Ok(c) => c,
+        Err(_) => return HttpResponse::ServiceUnavailable().body("Server Error"),
+    };
 
-    let mut cars = car_query.unwrap();
-
-    while cars.is_some() {
+    while car.is_some() {
         car_uuid = Uuid::new_v4().to_string();
 
         let car_query = state.database.fetch_car(car_uuid.clone()).await;
 
-        if car_query.is_err() {
-            return HttpResponse::ServiceUnavailable().body("Server Error");
-        }
-
-        cars = car_query.unwrap();
+        car = match car_query {
+            Ok(c) => c,
+            Err(_) => return HttpResponse::ServiceUnavailable().body("Server Error"),
+        };
     }
 
     let insert_query = state
@@ -159,45 +157,40 @@ async fn add(state: Data<HttpState>, req: HttpRequest, data: Json<CreateCar>) ->
         api_key: key.clone(),
     };
 
-    let return_string = serde_json::to_string(&return_car).unwrap();
-
-    return HttpResponse::Ok().body(return_string);
+    match serde_json::to_string(&return_car) {
+        Ok(s) => HttpResponse::Ok().body(s),
+        Err(_) => HttpResponse::ServiceUnavailable().body("Server Error"),
+    }
 }
 
 #[delete("/user/cars/{car_id}")]
 async fn remove(state: Data<HttpState>, req: HttpRequest, path: Path<(String,)>) -> impl Responder {
     let auth_token = req.headers().get("Authorization");
 
-    if auth_token.is_none() {
-        return HttpResponse::Unauthorized().body("No authorization token");
-    }
-
-    let auth_state_raw = auth::validate_and_refresh(
-        auth_token.unwrap().to_str().unwrap().to_string(),
-        state.jwt_secret.clone(),
-    );
-
-    if auth_state_raw.is_err() {
-        return HttpResponse::Unauthorized().body("Invalid Authorization");
-    }
-
-    let auth_state = auth_state_raw.unwrap();
+    let auth_state = match auth_token {
+        None => return HttpResponse::Unauthorized().body("No authorization token"),
+        Some(ah) => match ah.to_str() {
+            Err(_) => return HttpResponse::BadRequest().body("Bad authorization token"),
+            Ok(ast) => {
+                match auth::validate_and_refresh(ast.to_string(), state.jwt_secret.clone()) {
+                    Err(_) => return HttpResponse::BadRequest().body("Bad authorization token"),
+                    Ok(a) => a,
+                }
+            }
+        },
+    };
 
     let car_uuid = path.into_inner().0;
 
-    let car_query = state.database.fetch_car(car_uuid.clone()).await;
+    let car = state.database.fetch_car(car_uuid.clone()).await;
 
-    if car_query.is_err() {
-        return HttpResponse::ServiceUnavailable().body("Server Error");
-    }
-
-    let car_option = car_query.unwrap();
-
-    if car_option.is_none() {
-        HttpResponse::NotFound().body("Car does not exist");
-    }
-
-    let car = car_option.unwrap();
+    let car = match car {
+        Ok(co) => match co {
+            Some(c) => c,
+            None => return HttpResponse::NotFound().body("Car does not exist"),
+        },
+        Err(_) => return HttpResponse::ServiceUnavailable().body("Server Error"),
+    };
 
     if car.username != auth_state.claims.email {
         return HttpResponse::Unauthorized().body("Not Authorized");
@@ -209,23 +202,26 @@ async fn remove(state: Data<HttpState>, req: HttpRequest, path: Path<(String,)>)
         return HttpResponse::ServiceUnavailable().body("Server Error");
     }
 
-    let car_query = state
+    let cars = state
         .database
         .fetch_cars_by_user(auth_state.claims.email)
         .await;
-    if car_query.is_err() {
-        return HttpResponse::ServiceUnavailable().body("Server Error");
-    }
-
-    let cars = car_query.unwrap();
+    let cars = match cars {
+        Ok(c) => c,
+        Err(_) => return HttpResponse::ServiceUnavailable().body("Server Error"),
+    };
 
     let return_struct = GetCars { cars: cars };
 
-    if auth_state.refresh_token.is_some() {
-        return HttpResponse::Ok()
-            .insert_header(("Authorization", auth_state.refresh_token.unwrap()))
-            .body(serde_json::to_string(&return_struct).unwrap());
-    }
+    let return_string = match serde_json::to_string(&return_struct) {
+        Ok(s) => s,
+        Err(_) => return HttpResponse::ServiceUnavailable().body("Server Error"),
+    };
 
-    return HttpResponse::Ok().body(serde_json::to_string(&return_struct).unwrap());
+    match auth_state.refresh_token {
+        None => HttpResponse::Ok().body(return_string),
+        Some(t) => HttpResponse::Ok()
+            .insert_header(("Authorization", t))
+            .body(return_string),
+    }
 }
