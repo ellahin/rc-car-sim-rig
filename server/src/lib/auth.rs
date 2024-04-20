@@ -13,19 +13,14 @@ pub struct AuthState {
 fn verify(token: String, secret: String) -> Result<AuthJwt, ()> {
     let validation = Validation::new(Algorithm::RS256);
 
-    let token_raw = decode::<AuthJwt>(
+    match decode::<AuthJwt>(
         &token,
         &DecodingKey::from_secret(secret.clone().as_bytes()),
         &validation,
-    );
-
-    if token_raw.is_err() {
-        return Err(());
+    ) {
+        Ok(t) => Ok(t.claims),
+        Err(_) => Err(()),
     }
-
-    let token = token_raw.unwrap();
-
-    return Ok(token.claims);
 }
 
 fn refresh_token(claims: AuthJwt, secret: String) -> Result<String, ()> {
@@ -46,29 +41,23 @@ fn refresh_token(claims: AuthJwt, secret: String) -> Result<String, ()> {
 
     let jwt_header = Header::new(Algorithm::RS256);
 
-    let jwt = encode(
+    match encode(
         &jwt_header,
         &jwt_claims,
         &EncodingKey::from_secret(secret.clone().as_bytes()),
-    );
-
-    if jwt.is_err() {
-        return Err(());
+    ) {
+        Ok(j) => Ok(j),
+        Err(_) => Err(()),
     }
-
-    let token = jwt.unwrap();
-
-    return Ok(token);
 }
 
 pub fn validate_and_refresh(token: String, secret: String) -> Result<AuthState, ()> {
-    let token_raw = verify(token, secret.clone());
+    let token = verify(token, secret.clone());
 
-    if token_raw.is_err() {
-        return Err(());
-    }
-
-    let token = token_raw.unwrap();
+    let token = match token {
+        Ok(t) => t,
+        Err(_) => return Err(()),
+    };
 
     let now = Utc::now();
 
@@ -79,16 +68,15 @@ pub fn validate_and_refresh(token: String, secret: String) -> Result<AuthState, 
     }
 
     if token.exp < refresh_offset.timestamp() {
-        let refresh = refresh_token(token.clone(), secret.clone());
-
-        if refresh.is_err() {
-            return Err(());
-        }
-
-        return Ok(AuthState {
-            claims: token,
-            refresh_token: Some(refresh.unwrap()),
-        });
+        match refresh_token(token.clone(), secret.clone()) {
+            Err(_) => return Err(()),
+            Ok(a) => {
+                return Ok(AuthState {
+                    claims: token,
+                    refresh_token: Some(a),
+                })
+            }
+        };
     }
 
     return Ok(AuthState {

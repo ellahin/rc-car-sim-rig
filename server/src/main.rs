@@ -16,52 +16,34 @@ use std::env;
 #[tokio::main]
 async fn main() {
     // Setting up global states
-    let dot_env = dotenv();
+    match dotenv() {
+        Ok(_) => (),
+        Err(_) => println!("Warning: Dotenv file not found"),
+    };
 
-    if dot_env.is_err() {
-        println!("Warning: Dotenv file not found");
-    }
+    let jwt_secret = env::var("JWT_SECRETN").expect("JWT_SECRETN not in environment vars");
 
-    if env::var("JWT_SECRETN").is_err() {
-        panic!("JWT_SECRETN not in environment vars");
-    }
-
-    let jwt_secret = env::var("JWT_SECRETN").unwrap();
-
-    if env::var("FROM_ADDRESS").is_err() {
-        panic!("No FROM_ADDRESS in environment vars")
-    }
-
-    if env::var("DATABASE_URL").is_err() {
-        panic!("DATABASE_URL not in environment vars");
-    }
-
-    let database_url = env::var("DATABASE_URL").unwrap();
+    let from_address = env::var("FROM_ADDRESS").expect("No FROM_ADDRESS in environment vars");
+    let database_url = env::var("DATABASE_URL").expect("DATABASE_URL not in environment vars");
 
     let database = PostgresDatabase::new(database_url)
         .await
         .expect("Cannot connect to database");
 
-    let mut smtp_address = "127.0.0.1".to_string();
+    let smtp_address = match env::var("SMTP_ADDRESS") {
+        Err(_) => "127.0.0.1".to_string(),
+        Ok(v) => v,
+    };
 
-    if env::var("SMTP_ADDRESS").is_err() {
-        println!("No SMTP_ADDRESS in environment variables, reverting to using 127.0.0.1");
-    } else {
-        smtp_address = env::var("SMTP_ADDRESS").unwrap();
-    }
-
-    let smtp_transport_raw = SmtpTransport::relay(&smtp_address);
-
-    if smtp_transport_raw.is_err() {
-        panic!("Cannot connect to SMTP relay");
-    }
-
-    let from_address = env::var("FROM_ADDRESS").unwrap();
+    let smtp_transport = match SmtpTransport::relay(&smtp_address) {
+        Ok(s) => s,
+        Err(_) => panic!("Cannot connect to SMTP relay"),
+    };
 
     let http_state = crate::data::state::HttpState {
         database: *database,
         jwt_secret: jwt_secret,
-        smtp_transport: smtp_transport_raw.unwrap().build(),
+        smtp_transport: smtp_transport.build(),
         from_address: from_address,
     };
 
