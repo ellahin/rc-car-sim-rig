@@ -65,12 +65,13 @@ async fn put(state: Data<HttpState>, data: Json<AuthStartJson>) -> impl Responde
             auth_code
         ))
         .unwrap();
+    //let email_send = state.smtp_transport.send(&email_message);
+    //
+    //if email_send.is_err() {
+    //   return HttpResponse::InternalServerError().body("Cannot send email");
+    //}
 
-    let email_send = state.smtp_transport.send(&email_message);
-
-    if email_send.is_err() {
-        return HttpResponse::InternalServerError().body("Cannot send email");
-    }
+    println!("Code is {}", auth_code);
 
     let current_time = Utc::now();
     // Offsetting by 15 min
@@ -82,21 +83,19 @@ async fn put(state: Data<HttpState>, data: Json<AuthStartJson>) -> impl Responde
         exp: offset_time.timestamp(),
     };
 
-    let jwt_header = Header::new(Algorithm::RS256);
-
     match encode(
-        &jwt_header,
+        &Header::default(),
         &jwt_claims,
         &EncodingKey::from_secret(state.jwt_secret.clone().as_bytes()),
     ) {
         Ok(j) => HttpResponse::Ok().body(j),
-        Err(_) => HttpResponse::InternalServerError().body("Server Error"),
+        Err(e) => HttpResponse::InternalServerError().body(format!("{}", e)),
     }
 }
 
 #[put("/auth/email/verify")]
 pub async fn verify(state: Data<HttpState>, data: Json<AuthVerifyJson>) -> impl Responder {
-    let validation = Validation::new(Algorithm::RS256);
+    let validation = Validation::default();
 
     let token = match decode::<EmailAuthStartJwt>(
         &data.jwt,
@@ -138,10 +137,8 @@ pub async fn verify(state: Data<HttpState>, data: Json<AuthVerifyJson>) -> impl 
         exp: offset_time.timestamp(),
     };
 
-    let jwt_header = Header::new(Algorithm::RS256);
-
     let jwt = match encode(
-        &jwt_header,
+        &Header::default(),
         &jwt_claims,
         &EncodingKey::from_secret(state.jwt_secret.clone().as_bytes()),
     ) {

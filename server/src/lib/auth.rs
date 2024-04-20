@@ -10,15 +10,13 @@ pub struct AuthState {
     pub refresh_token: Option<String>,
 }
 
-fn verify(token: String, secret: String) -> Result<AuthJwt, ()> {
-    let validation = Validation::new(Algorithm::RS256);
-
+fn verify(token: &str, secret: String) -> Result<AuthJwt, ()> {
     match decode::<AuthJwt>(
         &token,
         &DecodingKey::from_secret(secret.clone().as_bytes()),
-        &validation,
+        &Validation::default(),
     ) {
-        Ok(t) => Ok(t.claims),
+        Ok(t) => return Ok(t.claims),
         Err(_) => Err(()),
     }
 }
@@ -39,10 +37,8 @@ fn refresh_token(claims: AuthJwt, secret: String) -> Result<String, ()> {
         exp: offset_time.timestamp(),
     };
 
-    let jwt_header = Header::new(Algorithm::RS256);
-
     match encode(
-        &jwt_header,
+        &Header::default(),
         &jwt_claims,
         &EncodingKey::from_secret(secret.clone().as_bytes()),
     ) {
@@ -51,7 +47,7 @@ fn refresh_token(claims: AuthJwt, secret: String) -> Result<String, ()> {
     }
 }
 
-pub fn validate_and_refresh(token: String, secret: String) -> Result<AuthState, ()> {
+pub fn validate_and_refresh(token: &str, secret: String) -> Result<AuthState, ()> {
     let token = verify(token, secret.clone());
 
     let token = match token {
@@ -63,7 +59,7 @@ pub fn validate_and_refresh(token: String, secret: String) -> Result<AuthState, 
 
     let refresh_offset = now.clone() + TimeDelta::try_seconds(300).unwrap();
 
-    if token.exp > now.timestamp() {
+    if token.exp < now.timestamp() {
         return Err(());
     }
 

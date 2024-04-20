@@ -32,12 +32,10 @@ async fn get(state: Data<HttpState>, req: HttpRequest) -> impl Responder {
         None => return HttpResponse::Unauthorized().body("No authorization token"),
         Some(ah) => match ah.to_str() {
             Err(_) => return HttpResponse::BadRequest().body("Bad authorization token"),
-            Ok(ast) => {
-                match auth::validate_and_refresh(ast.to_string(), state.jwt_secret.clone()) {
-                    Err(_) => return HttpResponse::BadRequest().body("Bad authorization token"),
-                    Ok(a) => a,
-                }
-            }
+            Ok(ast) => match auth::validate_and_refresh(&ast, state.jwt_secret.clone()) {
+                Err(_) => return HttpResponse::BadRequest().body("Bad authorization token"),
+                Ok(a) => a,
+            },
         },
     };
 
@@ -74,12 +72,10 @@ async fn add(state: Data<HttpState>, req: HttpRequest, data: Json<CreateCar>) ->
         None => return HttpResponse::Unauthorized().body("No authorization token"),
         Some(ah) => match ah.to_str() {
             Err(_) => return HttpResponse::BadRequest().body("Bad authorization token"),
-            Ok(ast) => {
-                match auth::validate_and_refresh(ast.to_string(), state.jwt_secret.clone()) {
-                    Err(_) => return HttpResponse::BadRequest().body("Bad authorization token"),
-                    Ok(a) => a,
-                }
-            }
+            Ok(ast) => match auth::validate_and_refresh(&ast, state.jwt_secret.clone()) {
+                Err(_) => return HttpResponse::BadRequest().body("Bad authorization token"),
+                Ok(a) => a,
+            },
         },
     };
 
@@ -171,12 +167,10 @@ async fn remove(state: Data<HttpState>, req: HttpRequest, path: Path<(String,)>)
         None => return HttpResponse::Unauthorized().body("No authorization token"),
         Some(ah) => match ah.to_str() {
             Err(_) => return HttpResponse::BadRequest().body("Bad authorization token"),
-            Ok(ast) => {
-                match auth::validate_and_refresh(ast.to_string(), state.jwt_secret.clone()) {
-                    Err(_) => return HttpResponse::BadRequest().body("Bad authorization token"),
-                    Ok(a) => a,
-                }
-            }
+            Ok(ast) => match auth::validate_and_refresh(&ast, state.jwt_secret.clone()) {
+                Err(_) => return HttpResponse::BadRequest().body("Bad authorization token"),
+                Ok(a) => a,
+            },
         },
     };
 

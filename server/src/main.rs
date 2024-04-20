@@ -35,7 +35,7 @@ async fn main() {
         Ok(v) => v,
     };
 
-    let smtp_transport = match SmtpTransport::relay(&smtp_address) {
+    let smtp_transport = match SmtpTransport::starttls_relay(&smtp_address) {
         Ok(s) => s,
         Err(_) => panic!("Cannot connect to SMTP relay"),
     };
