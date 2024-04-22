@@ -10,10 +10,10 @@ pub struct AuthState {
     pub refresh_token: Option<String>,
 }
 
-fn verify(token: &str, secret: String) -> Result<AuthJwt, ()> {
+fn verify(token: &str, secret: &String) -> Result<AuthJwt, ()> {
     match decode::<AuthJwt>(
         &token,
-        &DecodingKey::from_secret(secret.clone().as_bytes()),
+        &DecodingKey::from_secret(secret.as_bytes()),
         &Validation::default(),
     ) {
         Ok(t) => return Ok(t.claims),
@@ -21,10 +21,10 @@ fn verify(token: &str, secret: String) -> Result<AuthJwt, ()> {
     }
 }
 
-fn refresh_token(claims: AuthJwt, secret: String) -> Result<String, ()> {
+fn refresh_token(claims: &AuthJwt, secret: &String) -> Result<String, ()> {
     let current_time = Utc::now();
     // Offsetting by 15 min
-    let offset_time = current_time.clone() + TimeDelta::try_seconds(900).unwrap();
+    let offset_time = current_time + TimeDelta::try_seconds(900).unwrap();
 
     if current_time.timestamp() > claims.exp {
         return Err(());
@@ -40,15 +40,15 @@ fn refresh_token(claims: AuthJwt, secret: String) -> Result<String, ()> {
     match encode(
         &Header::default(),
         &jwt_claims,
-        &EncodingKey::from_secret(secret.clone().as_bytes()),
+        &EncodingKey::from_secret(secret.as_bytes()),
     ) {
         Ok(j) => Ok(j),
         Err(_) => Err(()),
     }
 }
 
-pub fn validate_and_refresh(token: &str, secret: String) -> Result<AuthState, ()> {
-    let token = verify(token, secret.clone());
+pub fn validate_and_refresh(token: &str, secret: &String) -> Result<AuthState, ()> {
+    let token = verify(token, &secret);
 
     let token = match token {
         Ok(t) => t,
@@ -57,14 +57,14 @@ pub fn validate_and_refresh(token: &str, secret: String) -> Result<AuthState, ()
 
     let now = Utc::now();
 
-    let refresh_offset = now.clone() + TimeDelta::try_seconds(300).unwrap();
+    let refresh_offset = now + TimeDelta::try_seconds(300).unwrap();
 
     if token.exp < now.timestamp() {
         return Err(());
     }
 
     if token.exp < refresh_offset.timestamp() {
-        match refresh_token(token.clone(), secret.clone()) {
+        match refresh_token(&token, &secret) {
             Err(_) => return Err(()),
             Ok(a) => {
                 return Ok(AuthState {

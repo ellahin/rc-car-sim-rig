@@ -6,7 +6,6 @@ use std::path::Path;
 use std::sync::Arc;
 
 use sqlx::migrate::Migrator;
-use sqlx::types::Json;
 use sqlx::PgPool;
 
 use chrono::prelude::*;
@@ -40,7 +39,7 @@ impl DataBase for PostgresDatabase {
         }));
     }
 
-    async fn user_login(&self, username: String) -> Result<(), DatabaseError> {
+    async fn user_login(&self, username: &String) -> Result<(), DatabaseError> {
         let get_user = sqlx::query!("SELECT username from users where username = $1", username)
             .fetch_optional(&*self.pool)
             .await;
@@ -65,7 +64,7 @@ impl DataBase for PostgresDatabase {
         return Ok(());
     }
 
-    async fn fetch_user_auth(&self, username: String) -> Result<Option<UserAuth>, DatabaseError> {
+    async fn fetch_user_auth(&self, username: &String) -> Result<Option<UserAuth>, DatabaseError> {
         let auth_opt = sqlx::query!("SELECT * from auth WHERE username = $1", username)
             .fetch_optional(&*self.pool)
             .await;
@@ -84,8 +83,12 @@ impl DataBase for PostgresDatabase {
         }
     }
 
-    async fn create_user_auth(&self, username: String, code: String) -> Result<(), DatabaseError> {
-        let auth_fetch = self.fetch_user_auth(username.clone()).await;
+    async fn create_user_auth(
+        &self,
+        username: &String,
+        code: &String,
+    ) -> Result<(), DatabaseError> {
+        let auth_fetch = self.fetch_user_auth(&username).await;
 
         let auth_fetch = match auth_fetch {
             Ok(e) => e,
@@ -93,7 +96,7 @@ impl DataBase for PostgresDatabase {
         };
 
         if auth_fetch.is_some() {
-            let auth_delete = self.delete_user_auth(username.clone()).await;
+            let auth_delete = self.delete_user_auth(&username).await;
             if auth_delete.is_err() {
                 return Err(DatabaseError::ServerError);
             }
@@ -113,7 +116,7 @@ impl DataBase for PostgresDatabase {
         }
     }
 
-    async fn fetch_user(&self, username: String) -> Result<Option<User>, DatabaseError> {
+    async fn fetch_user(&self, username: &String) -> Result<Option<User>, DatabaseError> {
         let get_user = sqlx::query!("SELECT * from users where username = $1", username)
             .fetch_optional(&*self.pool)
             .await;
@@ -132,7 +135,7 @@ impl DataBase for PostgresDatabase {
         }
     }
 
-    async fn fetch_cars_by_user(&self, username: String) -> Result<Vec<Car>, DatabaseError> {
+    async fn fetch_cars_by_user(&self, username: &String) -> Result<Vec<Car>, DatabaseError> {
         let cars = sqlx::query!("SELECT * from cars where username = $1", username)
             .fetch_all(&*self.pool)
             .await;
@@ -175,7 +178,7 @@ impl DataBase for PostgresDatabase {
         Ok(return_cars)
     }
 
-    async fn fetch_car(&self, car_id: String) -> Result<Option<CarFull>, DatabaseError> {
+    async fn fetch_car(&self, car_id: &String) -> Result<Option<CarFull>, DatabaseError> {
         let car = sqlx::query!("SELECT * from cars where uuid = $1", car_id)
             .fetch_optional(&*self.pool)
             .await;
@@ -197,8 +200,8 @@ impl DataBase for PostgresDatabase {
         }
     }
 
-    async fn put_car(&self, car: CarFull) -> Result<(), DatabaseError> {
-        let car_opt = self.fetch_car(car.uuid.clone()).await;
+    async fn put_car(&self, car: &CarFull) -> Result<(), DatabaseError> {
+        let car_opt = self.fetch_car(&car.uuid).await;
 
         let car_opt = match car_opt {
             Ok(c) => c,
@@ -238,8 +241,8 @@ impl DataBase for PostgresDatabase {
         return Ok(());
     }
 
-    async fn delete_car(&self, car_id: String) -> Result<(), DatabaseError> {
-        let car_opt = self.fetch_car(car_id.clone()).await;
+    async fn delete_car(&self, car_id: &String) -> Result<(), DatabaseError> {
+        let car_opt = self.fetch_car(&car_id).await;
 
         let car_opt = match car_opt {
             Ok(c) => c,
@@ -260,8 +263,8 @@ impl DataBase for PostgresDatabase {
         }
     }
 
-    async fn delete_user_auth(&self, username: String) -> Result<(), DatabaseError> {
-        let user = self.fetch_user_auth(username.clone()).await;
+    async fn delete_user_auth(&self, username: &String) -> Result<(), DatabaseError> {
+        let user = self.fetch_user_auth(&username).await;
 
         let user = match user {
             Ok(u) => u,
@@ -282,7 +285,7 @@ impl DataBase for PostgresDatabase {
         }
     }
 
-    async fn ping_car_state(&self, car_id: String) -> Result<(), DatabaseError> {
+    async fn ping_car_state(&self, car_id: &String) -> Result<(), DatabaseError> {
         let query = sqlx::query!(
             "UPDATE cars SET last_ping = (NOW() at time zone 'utc') WHERE uuid = $1 ",
             car_id

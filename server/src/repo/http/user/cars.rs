@@ -32,7 +32,7 @@ async fn get(state: Data<HttpState>, req: HttpRequest) -> impl Responder {
         None => return HttpResponse::Unauthorized().body("No authorization token"),
         Some(ah) => match ah.to_str() {
             Err(_) => return HttpResponse::BadRequest().body("Bad authorization token"),
-            Ok(ast) => match auth::validate_and_refresh(&ast, state.jwt_secret.clone()) {
+            Ok(ast) => match auth::validate_and_refresh(&ast, &state.jwt_secret) {
                 Err(_) => return HttpResponse::BadRequest().body("Bad authorization token"),
                 Ok(a) => a,
             },
@@ -41,7 +41,7 @@ async fn get(state: Data<HttpState>, req: HttpRequest) -> impl Responder {
 
     let cars = state
         .database
-        .fetch_cars_by_user(auth_state.claims.email.clone())
+        .fetch_cars_by_user(&auth_state.claims.email)
         .await;
 
     let cars = match cars {
@@ -72,7 +72,7 @@ async fn add(state: Data<HttpState>, req: HttpRequest, data: Json<CreateCar>) ->
         None => return HttpResponse::Unauthorized().body("No authorization token"),
         Some(ah) => match ah.to_str() {
             Err(_) => return HttpResponse::BadRequest().body("Bad authorization token"),
-            Ok(ast) => match auth::validate_and_refresh(&ast, state.jwt_secret.clone()) {
+            Ok(ast) => match auth::validate_and_refresh(&ast, &state.jwt_secret) {
                 Err(_) => return HttpResponse::BadRequest().body("Bad authorization token"),
                 Ok(a) => a,
             },
@@ -81,7 +81,7 @@ async fn add(state: Data<HttpState>, req: HttpRequest, data: Json<CreateCar>) ->
 
     let cars = state
         .database
-        .fetch_cars_by_user(auth_state.claims.email.clone())
+        .fetch_cars_by_user(&auth_state.claims.email)
         .await;
     let cars = match cars {
         Ok(c) => c,
@@ -106,14 +106,14 @@ async fn add(state: Data<HttpState>, req: HttpRequest, data: Json<CreateCar>) ->
         .map(char::from)
         .collect();
 
-    let key_becrypt = match bcrypt::hash(key.clone(), bcrypt::DEFAULT_COST) {
+    let key_becrypt = match bcrypt::hash(&key, bcrypt::DEFAULT_COST) {
         Ok(k) => k,
         Err(_) => return HttpResponse::ServiceUnavailable().body("Server Error"),
     };
 
     let mut car_uuid = Uuid::new_v4().to_string();
 
-    let car = state.database.fetch_car(car_uuid.clone()).await;
+    let car = state.database.fetch_car(&car_uuid).await;
 
     let mut car = match car {
         Ok(c) => c,
@@ -123,7 +123,7 @@ async fn add(state: Data<HttpState>, req: HttpRequest, data: Json<CreateCar>) ->
     while car.is_some() {
         car_uuid = Uuid::new_v4().to_string();
 
-        let car_query = state.database.fetch_car(car_uuid.clone()).await;
+        let car_query = state.database.fetch_car(&car_uuid).await;
 
         car = match car_query {
             Ok(c) => c,
@@ -133,7 +133,7 @@ async fn add(state: Data<HttpState>, req: HttpRequest, data: Json<CreateCar>) ->
 
     let insert_query = state
         .database
-        .put_car(CarFull {
+        .put_car(&CarFull {
             name: data.name.clone(),
             uuid: car_uuid.clone(),
             secret: key_becrypt,
@@ -167,7 +167,7 @@ async fn remove(state: Data<HttpState>, req: HttpRequest, path: Path<(String,)>)
         None => return HttpResponse::Unauthorized().body("No authorization token"),
         Some(ah) => match ah.to_str() {
             Err(_) => return HttpResponse::BadRequest().body("Bad authorization token"),
-            Ok(ast) => match auth::validate_and_refresh(&ast, state.jwt_secret.clone()) {
+            Ok(ast) => match auth::validate_and_refresh(&ast, &state.jwt_secret) {
                 Err(_) => return HttpResponse::BadRequest().body("Bad authorization token"),
                 Ok(a) => a,
             },
@@ -176,7 +176,7 @@ async fn remove(state: Data<HttpState>, req: HttpRequest, path: Path<(String,)>)
 
     let car_uuid = path.into_inner().0;
 
-    let car = state.database.fetch_car(car_uuid.clone()).await;
+    let car = state.database.fetch_car(&car_uuid).await;
 
     let car = match car {
         Ok(co) => match co {
@@ -190,7 +190,7 @@ async fn remove(state: Data<HttpState>, req: HttpRequest, path: Path<(String,)>)
         return HttpResponse::Unauthorized().body("Not Authorized");
     }
 
-    let delet_query = state.database.delete_car(car_uuid.clone()).await;
+    let delet_query = state.database.delete_car(&car_uuid).await;
 
     if delet_query.is_err() {
         return HttpResponse::ServiceUnavailable().body("Server Error");
@@ -198,7 +198,7 @@ async fn remove(state: Data<HttpState>, req: HttpRequest, path: Path<(String,)>)
 
     let cars = state
         .database
-        .fetch_cars_by_user(auth_state.claims.email)
+        .fetch_cars_by_user(&auth_state.claims.email)
         .await;
     let cars = match cars {
         Ok(c) => c,
